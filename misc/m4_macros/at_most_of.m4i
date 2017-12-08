@@ -60,7 +60,7 @@ dnl generate ($1 = $2) pair
 define(<!m4_AMO_ineqpair!>, <!(#i$1 = #i$2)!>)
 dnl
 dnl generate ($1 = $1+1 ... $2) list of things with or separators
-dnl $1 : rhs (current index, typically start at incr($))
+dnl $1 : rhs (current index, typically start at min+1 = incr($2))
 dnl $2 : lhs (min) 
 dnl $3 : rhs (max)
 dnl $4 : empty means first
