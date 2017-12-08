@@ -1,9 +1,29 @@
 dnl at_most_of macro
 dnl
 dnl Cas Cremers
+dnl December 2017
+dnl
+dnl Generates Tamarin restrictions that ensure that certain actions only
+dnl occur at most N times, for N >= 0. Requires as arguments N, the
+dnl action fact name, and the arity of the action fact. 
+dnl
+dnl   at_most_of(MaxCount, ActionFactName, ActionFactArity)
+dnl
+dnl Example:
+dnl
+dnl   at_most_of(2,testFact,3)
+dnl
+dnl Target: Tamarin source files that will be pre-processed by m4. Assumes that m4
+dnl quotes are redefined in the following way:
+dnl
+dnl   changequote(<!,!>)
+dnl   changecom(<!/*!>, <!*/!>)
 dnl
 dnl TODO: 
 dnl * Document better
+dnl
+dnl
+dnl ------------------------------------------------------------------
 dnl
 dnl Generic sequence
 dnl m4_sequence(start,end,prefix,postfix,separator)
@@ -48,7 +68,7 @@ define(<!m4_AMO_ineqline!>, <!ifelse(eval($1 <= $3),
 1, ifelse($4,1,<! | !>)m4_AMO_ineqpair($2,$1)<!m4_AMO_ineqline(incr($1),<!$2!>,<!$3!>,<!1!>)!>,<!!>)!>)
 dnl
 dnl all combos
-dnl $1 : index
+dnl $1 : min
 dnl $2 : max
 define(<!m4_AMO_ineqform!>, <!ifelse(eval($1 < $2),
 1,ifelse($3,1,<!
