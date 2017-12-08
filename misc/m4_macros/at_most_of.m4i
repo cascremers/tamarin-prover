@@ -4,7 +4,6 @@ dnl Cas Cremers
 dnl
 dnl TODO: 
 dnl * Document better
-dnl * Make it work for at_most_0_of 
 dnl
 dnl Generic sequence
 dnl m4_sequence(start,end,prefix,postfix,separator)
@@ -62,5 +61,5 @@ restriction At_most_$1_of_$2:
 "All m4_sequence(1,<!incr($1)!>,#i,<! !>) 
       m4_AMO_block(1,<!incr($1)!>,<!$3!>,,<! !>).
       m4_AMO_block(1,<!incr($1)!>,<!$3!>,<!$2(!>,<!,!>,<!)@#i!>,<! &!>)dnl
-==> ( m4_AMO_ineqform(1,<!incr($1)!>,0,<!         !>) )"dnl
+==> ifelse($1,0,<!F!>,<!( m4_AMO_ineqform(1,<!incr($1)!>,0,<!         !>) )!>)"dnl
 !>)dnl
