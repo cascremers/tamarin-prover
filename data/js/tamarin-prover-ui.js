@@ -930,4 +930,53 @@ $(document).ready(function() {
 
     // Initialize user interface
     ui.init();
+    
+    // Initialize sources summary accordion
+    sourcesAccordion.init();
 });
+
+/*-----------------------------------------------------------*
+ * Sources Summary Accordion                                 *
+ *-----------------------------------------------------------*/
+
+var sourcesAccordion = {
+    /**
+     * Initialize the sources summary accordion functionality
+     */
+    init: function() {
+        // Set up click handlers for toggles
+        $(document).on('click', '.summary-header .toggle', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var toggle = $(this);
+            var caseList = toggle.closest('li').find('.case-list').first();
+            
+            if (caseList.hasClass('collapsed')) {
+                caseList.removeClass('collapsed').addClass('expanded');
+                toggle.addClass('expanded');
+            } else {
+                caseList.removeClass('expanded').addClass('collapsed');
+                toggle.removeClass('expanded');
+            }
+        });
+        
+        // Set up click handler for expand all
+        $(document).on('click', '.sources-summary .expand-all', function(e) {
+            e.preventDefault();
+            var summary = $(this).closest('.sources-summary');
+            var allCollapsed = summary.find('.case-list.collapsed').length > 0;
+            
+            if (allCollapsed) {
+                // Expand all
+                summary.find('.case-list').removeClass('collapsed').addClass('expanded');
+                summary.find('.toggle').addClass('expanded');
+                $(this).text('[collapse all]');
+            } else {
+                // Collapse all
+                summary.find('.case-list').removeClass('expanded').addClass('collapsed');
+                summary.find('.toggle').removeClass('expanded');
+                $(this).text('[expand all]');
+            }
+        });
+    }
+};

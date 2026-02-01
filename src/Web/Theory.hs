@@ -818,9 +818,10 @@ htmlSource :: HtmlDocument d
                     => RenderUrl -> TheoryIdx -> SourceKind -> (Int, Source) -> d
 htmlSource renderUrl tidx kind (j, th) =
     if null cases
-      then withTag "h2" [] ppHeader $-$ withTag "h3" [] (text "No cases.")
-      else vcat $ withTag "h2" [] ppHeader : cases
+      then withTag "h2" [("id", sourceId)] ppHeader $-$ withTag "h3" [] (text "No cases.")
+      else vcat $ withTag "h2" [("id", sourceId)] ppHeader : cases
   where
+    sourceId = "source-" ++ show j
     cases    = concatMap ppCase $ zip [1..] $ getDisj th._cdCases
     wrapP    = withTag "p" [("class","monospace cases")]
     nCases   = int $ length $ getDisj th._cdCases
@@ -830,7 +831,7 @@ htmlSource renderUrl tidx kind (j, th) =
       , parens $ nCases <-> text "cases"
       ]
     ppCase (i, (names, se)) =
-      [ withTag "h3" [] $ fsep [ text "Source", int i, text "of", nCases
+      [ withTag "h3" [("id", caseId i)] $ fsep [ text "Source", int i, text "of", nCases
                                , text " / named ", doubleQuotes (text name),
                                  if isPartial then text "(partial deconstructions)" else text "" ]
       , refDotInteractiveStaticPath renderUrl tidx (TheorySource kind j i)
@@ -840,15 +841,17 @@ htmlSource renderUrl tidx kind (j, th) =
       where
         name = intercalate "_" names
         isPartial = not $ null $ unsolvedChains se
+        caseId i = sourceId ++ "-case-" ++ show i
 
 -- | A Html document representing the requires case splitting theorem.
 htmlSourceDiff :: HtmlDocument d
                     => RenderUrl -> TheoryIdx -> Side -> SourceKind -> Bool -> (Int, Source) -> d
 htmlSourceDiff renderUrl tidx s kind d (j, th) =
     if null cases
-      then withTag "h2" [] ppHeader $-$ withTag "h3" [] (text "No cases.")
-      else vcat $ withTag "h2" [] ppHeader : cases
+      then withTag "h2" [("id", sourceId)] ppHeader $-$ withTag "h3" [] (text "No cases.")
+      else vcat $ withTag "h2" [("id", sourceId)] ppHeader : cases
   where
+    sourceId = "source-" ++ show j
     cases    = concatMap ppCase $ zip [1..] $ getDisj th._cdCases
     wrapP    = withTag "p" [("class","monospace cases")]
     nCases   = int $ length $ getDisj th._cdCases
@@ -858,7 +861,7 @@ htmlSourceDiff renderUrl tidx s kind d (j, th) =
       , parens $ nCases <-> text "cases"
       ]
     ppCase (i, (names, se)) =
-      [ withTag "h3" [] $ fsep [ text "Source", int i, text "of", nCases
+      [ withTag "h3" [("id", caseId i)] $ fsep [ text "Source", int i, text "of", nCases
                                , text " / named ", doubleQuotes (text name),
                                  if isPartial then text "(partial deconstructions)" else text "" ]
       , refDotInteractiveDiffPath renderUrl tidx (DiffTheorySource s kind d j i) False
@@ -868,17 +871,82 @@ htmlSourceDiff renderUrl tidx s kind d (j, th) =
       where
         name = intercalate "_" names
         isPartial = not $ null $ unsolvedChains se
+        caseId i = sourceId ++ "-case-" ++ show i
 
 
 -- | Build the Html document showing the source cases.
 reqCasesSnippet :: HtmlDocument d => RenderUrl -> TheoryIdx -> SourceKind -> ClosedTheory -> d
 reqCasesSnippet renderUrl tidx kind thy = vcat $
-    htmlSource renderUrl tidx kind <$> zip [1..] (getSource kind thy)
+    sourceSummary sources : (htmlSource renderUrl tidx kind <$> sources)
+  where
+    sources = zip [1..] (getSource kind thy)
+    kindName = case kind of
+      RawSource -> "Raw"
+      RefinedSource -> "Refined"
+    sourceSummary srcs = 
+      withTag "div" [("class", "sources-summary")] $
+        withTag "h2" [] (text ("Overview of " ++ kindName ++ " Sources") <-> 
+          withTag "span" [("class", "expand-all")] (text "[expand all]")) $$
+        withTag "ol" [("class", "summary-accordion")] (vcat $ map summaryItem srcs)
+    
+    summaryItem (j, th) =
+      withTag "li" [("class", if hasPartial then "has-partial" else "")] $
+        withTag "div" [("class", "summary-header")] (
+          withTag "span" [("class", "toggle")] (text "▶") <->
+          withTag "a" [("href", "#source-" ++ show j)] summaryText
+        ) $$
+        withTag "ol" [("class", "case-list collapsed")] (vcat caseItems)
+      where
+        nCases = length $ getDisj th._cdCases
+        ppPrem = prettyGoal th._cdGoal
+        hasPartial = any (\(_, se) -> not $ null $ unsolvedChains se) (getDisj th._cdCases)
+        summaryText = doubleQuotes (text $ render ppPrem) <->
+                      parens (int nCases <-> text "cases") <->
+                      (if hasPartial then text " ⚠" else text "")
+        caseItems = map mkCaseItem $ zip [1..] (getDisj th._cdCases)
+        mkCaseItem (i, (names, se)) = 
+          let isPartial = not $ null $ unsolvedChains se
+          in withTag "li" [("class", if isPartial then "partial" else "")] $
+            withTag "a" [("href", "#source-" ++ show j ++ "-case-" ++ show i)] $
+              text "Source" <-> int i <> text ":" <-> text (intercalate "_" names) <->
+              (if isPartial then text " ⚠" else text "")
 
 -- | Build the Html document showing the source cases.
 reqCasesDiffSnippet :: HtmlDocument d => RenderUrl -> TheoryIdx -> Side -> SourceKind -> Bool -> ClosedDiffTheory -> d
 reqCasesDiffSnippet renderUrl tidx s kind isdiff thy = vcat $
-    htmlSourceDiff renderUrl tidx s kind isdiff <$> zip [1..] (getDiffSource s isdiff kind thy)
+    sourceSummary sources : (htmlSourceDiff renderUrl tidx s kind isdiff <$> sources)
+  where
+    sources = zip [1..] (getDiffSource s isdiff kind thy)
+    kindName = case kind of
+      RawSource -> "Raw"
+      RefinedSource -> "Refined"
+    sourceSummary srcs = 
+      withTag "div" [("class", "sources-summary")] $
+        withTag "h2" [] (text ("Overview of " ++ kindName ++ " Sources") <-> 
+          withTag "span" [("class", "expand-all")] (text "[expand all]")) $$
+        withTag "ol" [("class", "summary-accordion")] (vcat $ map summaryItem srcs)
+    
+    summaryItem (j, th) =
+      withTag "li" [("class", if hasPartial then "has-partial" else "")] $
+        withTag "div" [("class", "summary-header")] (
+          withTag "span" [("class", "toggle")] (text "▶") <->
+          withTag "a" [("href", "#source-" ++ show j)] summaryText
+        ) $$
+        withTag "ol" [("class", "case-list collapsed")] (vcat caseItems)
+      where
+        nCases = length $ getDisj th._cdCases
+        ppPrem = prettyGoal th._cdGoal
+        hasPartial = any (\(_, se) -> not $ null $ unsolvedChains se) (getDisj th._cdCases)
+        summaryText = doubleQuotes (text $ render ppPrem) <->
+                      parens (int nCases <-> text "cases") <->
+                      (if hasPartial then text " ⚠" else text "")
+        caseItems = map mkCaseItem $ zip [1..] (getDisj th._cdCases)
+        mkCaseItem (i, (names, se)) = 
+          let isPartial = not $ null $ unsolvedChains se
+          in withTag "li" [("class", if isPartial then "partial" else "")] $
+            withTag "a" [("href", "#source-" ++ show j ++ "-case-" ++ show i)] $
+              text "Source" <-> int i <> text ":" <-> text (intercalate "_" names) <->
+              (if isPartial then text " ⚠" else text "")
 
 -- | Build the Html document showing the rules of the theory.
 rulesSnippet :: HtmlDocument d => ClosedTheory -> d
