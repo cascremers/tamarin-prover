@@ -31,6 +31,12 @@ toolFlags =
   [ flagOpt "dot" ["with-dot"] (updateArg "withDot") "FILE" "Path to GraphViz 'dot' tool"
   , flagOpt "json" ["with-json"] (updateArg "withJson") "FILE" "Path to JSON rendering tool (not working with --diff)"
   , flagOpt "maude" ["with-maude"] (updateArg "withMaude") "FILE" "Path to 'maude' rewriting tool"
+  , flagNone ["no-cache"] (addEmptyArg "noCache")
+      "Disable disk caching of precomputation results (same as TAMARIN_NO_CACHE=1)"
+  , flagNone ["clear-cache"] (addEmptyArg "clearCache")
+      "Clear the entire disk cache and exit"
+  , flagNone ["clear-cache-oldversions"] (addEmptyArg "clearOldCache")
+      "Remove cached data from other Tamarin/Maude versions and exit"
   ]
 
 -- | Path to dot tool

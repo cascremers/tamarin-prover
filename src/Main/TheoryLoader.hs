@@ -62,6 +62,7 @@ import Theory.Text.Parser (diffTheory, parseIntruderRules, theory)
 import Theory.Text.Parser.Token
 import Theory.Text.Pretty qualified as Pretty
 import Theory.Tools.AbstractInterpretation (EvaluationStyle (..))
+import Theory.Tools.Cache (CacheConfig(..), defaultCacheConfig)
 import Theory.Tools.IntruderRules
   ( multisetIntruderRules,
     natIntruderRules,
@@ -218,7 +219,10 @@ data TheoryLoadOptions = TheoryLoadOptions
     derivationChecks :: Int,
     noReuse :: Bool,
     noRestrictions :: Bool,
-    replicationBound :: Int
+    replicationBound :: Int,
+    cacheConfig :: CacheConfig,
+    clearCacheMode :: Bool,
+    clearOldCacheMode :: Bool
   }
   deriving (Show)
 
@@ -246,7 +250,10 @@ defaultTheoryLoadOptions =
       derivationChecks = 5,
       noReuse = False,
       noRestrictions = False,
-      replicationBound = 3
+      replicationBound = 3,
+      cacheConfig = defaultCacheConfig,
+      clearCacheMode = False,
+      clearOldCacheMode = False
     }
 
 toParserFlags :: TheoryLoadOptions -> [String]
@@ -284,6 +291,9 @@ mkTheoryLoadOptions as =
     <*> noReuse
     <*> noRestrictions
     <*> replicationBound
+    <*> cacheCfg
+    <*> clearCacheMd
+    <*> clearOldCacheMd
   where
     proveMode = pure $ argExists "prove" as
     lemmaNames = pure $ findArg "prove" as ++ findArg "lemma" as
@@ -351,6 +361,10 @@ mkTheoryLoadOptions as =
     deriv = parseIntArg derivchecks derivDefault id "derivcheck-timeout: invalid bound given"
 
     replicationBound = parseIntArg (findArg "replication-bound" as) defaultTheoryLoadOptions.replicationBound id "replication-bound: invalid bound given"
+
+    cacheCfg = pure $ defaultCacheConfig { ccEnabled = not (argExists "noCache" as) }
+    clearCacheMd = pure $ argExists "clearCache" as
+    clearOldCacheMd = pure $ argExists "clearOldCache" as
 
 stopOnTrace :: (MonadError ArgumentError m) => Arguments -> m (Maybe SolutionExtractor)
 stopOnTrace as = case map toLower <$> findArg "stop-on-trace" as of
@@ -492,8 +506,8 @@ checkTranslatedTheory thyOpts sign thy = do
           timeout (1000000 * derivChecks) $
             evaluate . force $
               either
-                (\t -> checkVariableDeducability t derivCheckSignature autoSources defaultProver)
-                (\t -> diffCheckVariableDeducability t derivCheckSignature autoSources defaultProver defaultDiffProver)
+                (\t -> checkVariableDeducability (thyOpts.cacheConfig) t derivCheckSignature autoSources defaultProver)
+                (\t -> diffCheckVariableDeducability (thyOpts.cacheConfig) t derivCheckSignature autoSources defaultProver defaultDiffProver)
                 deducThy
       traceM ("[Theory " ++ theoryName thy ++ "] Derivation checks ended")
       pure rep
@@ -574,17 +588,18 @@ closeTranslatedTheory
   -> m (Either ClosedTheory ClosedDiffTheory)
 closeTranslatedTheory thyOpts sign srcThy = do
   diffLemThy <- withDiffTheory (pure . addDefaultDiffLemma) srcThy
-  let closedThy =
+  let cfg = thyOpts.cacheConfig
+      closedThy =
         bimap
-          (\t -> closeTheoryWithMaude sign t autoSources True)
-          (\t -> closeDiffTheoryWithMaude sign t autoSources)
+          (\t -> closeTheoryWithMaude cfg sign t autoSources True)
+          (\t -> closeDiffTheoryWithMaude cfg sign t autoSources)
           diffLemThy
       partialThy =
         case thyOpts.partialEvaluation of
           Just style ->
             bimap
-              (applyPartialEvaluation style autoSources)
-              (applyPartialEvaluationDiff style autoSources)
+              (applyPartialEvaluation cfg style autoSources)
+              (applyPartialEvaluationDiff cfg style autoSources)
               closedThy
           Nothing -> closedThy
       provedThy =

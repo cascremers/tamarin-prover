@@ -384,6 +384,10 @@ saturateSources parameters ctxt thsInit  =
                  return (not $ null names, names)
 
 -- | Precompute a saturated set of case distinctions.
+--
+-- NOTE: The result of this function is cached to disk by 'closeRuleCache' in
+-- Rule.hs. If you add a parameter here, you must also add it to 'keyStr' in
+-- 'closeRuleCache' so stale cache entries are not reused.
 precomputeSources
     :: IntegerParameters
     -> ProofContext
@@ -449,6 +453,10 @@ precomputeSources parameters ctxt restrictions =
 
 -- | Refine a set of sources by exploiting additional source
 -- assumptions.
+--
+-- NOTE: The result of this function is cached to disk by 'closeRuleCache' in
+-- Rule.hs. If you add a parameter here, you must also add it to 'keyStr' in
+-- 'closeRuleCache' so stale cache entries are not reused.
 refineWithSourceAsms
     :: IntegerParameters -- ^ Parameters for openChains and Saturation limits
     -> [LNGuarded]    -- ^ Source assumptions to use.

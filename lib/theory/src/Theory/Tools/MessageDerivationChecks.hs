@@ -10,6 +10,7 @@ import TheoryObject
 import Theory.Model
 import Theory.Proof
 import Prover
+import Theory.Tools.Cache (CacheConfig)
 import Data.Maybe ( fromJust, fromMaybe, catMaybes, mapMaybe )
 import Data.List
 import Theory.Tools.Wellformedness (WfErrorReport, underlineTopic)
@@ -32,13 +33,13 @@ import OpenTheory
 -----------------------------------------------
 
 
-checkVariableDeducability :: OpenTranslatedTheory -> SignatureWithMaude -> Bool -> Prover -> WfErrorReport
-checkVariableDeducability thy sig sources prover =
+checkVariableDeducability :: CacheConfig -> OpenTranslatedTheory -> SignatureWithMaude -> Bool -> Prover -> WfErrorReport
+checkVariableDeducability cfg thy sig sources prover =
     reportVars (map checkProofStatuses provenTheories) originalRules freeVars
     where
         originalRules = map (applyMacroInProtoRule (theoryMacros thy)) $ theoryRules thy
         provenTheories =  map (proveTheory (const True) prover) closedTheories
-        closedTheories = map (\t -> closeTheoryWithMaude sig t sources False) modifiedTheories
+        closedTheories = map (\t -> closeTheoryWithMaude cfg sig t sources False) modifiedTheories
         modifiedTheories =  zipWith3 (\r l t -> (addRules [r] . addLemmas l ) t)  newRules newLemmas (repeat emptyPublicThy)
         emptyPublicThy = makeFunsPublic (toSignaturePure sig) $ deleteRulesAndLemmasAndRestrictionsFromTheory thy
         newRules = zipWith3 (\idx freevs prems -> generateRule freevs (premisesToOut prems) idx) [0..] freeVars premises
@@ -46,13 +47,13 @@ checkVariableDeducability thy sig sources prover =
         premises = map (map (fmap replacePrivate)) $ premsOfThyRules originalRules
         freeVars = freesInThyRules originalRules
 
-diffCheckVariableDeducability :: OpenDiffTheory -> SignatureWithMaude -> Bool -> Prover -> DiffProver -> WfErrorReport
-diffCheckVariableDeducability thy sig sources prover diffprover =
+diffCheckVariableDeducability :: CacheConfig -> OpenDiffTheory -> SignatureWithMaude -> Bool -> Prover -> DiffProver -> WfErrorReport
+diffCheckVariableDeducability cfg thy sig sources prover diffprover =
     reportDiffVars (map checkDiffProofStatuses provenTheories) originalRules freeVars
     where
         originalRules = diffTheoryDiffRules thy
         provenTheories =  map (proveDiffTheory (const True) prover diffprover) closedTheories
-        closedTheories = map (\t -> closeDiffTheoryWithMaude sig t sources) modifiedTheories
+        closedTheories = map (\t -> closeDiffTheoryWithMaude cfg sig t sources) modifiedTheories
         modifiedTheories =  map (\(r,l,t) -> (addDiffRules [r] . addDiffLemmas l ) t) (zip3 newrules newlemmas (repeat emptyPublicThy))
         emptyPublicThy = diffmakeFunsPublic (toSignaturePure sig) $ diffdeleteRulesAndLemmasAndRestrictionsFromTheory thy
         newrules =  map (\(idx, freevs, prems )-> generateRule freevs (premisesToOut prems) idx) freesAndPrems

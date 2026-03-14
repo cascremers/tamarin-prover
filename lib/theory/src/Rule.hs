@@ -25,11 +25,13 @@ import           Theory.Proof
 import           Theory.Tools.InjectiveFactInstances
 import           Theory.Tools.RuleVariants
 import           Theory.Tools.IntruderRules
+import           Theory.Tools.Cache
 
 import           Term.Positions
 import           Term.Macro
-import Theory.Constraint.Solver.Sources (IntegerParameters)
-import Data.Maybe (maybeToList)
+import           Theory.Constraint.Solver.Sources (IntegerParameters)
+import           Data.Maybe (maybeToList)
+import qualified Data.Binary as B
 
 
 
@@ -118,7 +120,8 @@ closeIntrRule _   ir                                        = [ir]
 
 -- | Close a rule cache. Hower, note that the
 -- requires case distinctions are not computed here.
-closeRuleCache :: IntegerParameters  -- ^ Parameters for open chains and saturation limits
+closeRuleCache :: CacheConfig       -- ^ Disk caching configuration
+               -> IntegerParameters  -- ^ Parameters for open chains and saturation limits
                -> [LNGuarded]        -- ^ Restrictions to use.
                -> [LNGuarded]        -- ^ Source lemmas to use.
                -> S.Set FactTag      -- ^ Fact tags forced to be injective
@@ -129,9 +132,9 @@ closeRuleCache :: IntegerParameters  -- ^ Parameters for open chains and saturat
                -> Bool               -- ^ Diff or not
                -> Bool               -- ^ isSapic or not
                -> ClosedRuleCache    -- ^ Cached rules and case distinctions.
-closeRuleCache parameters restrictions typAsms forcedInjFacts sig protoRules intrRules verbose isdiff isSapic = -- trace ("closeRuleCache: " ++ show classifiedRules) $
+closeRuleCache cfg parameters restrictions typAsms forcedInjFacts sig protoRules intrRules verbose isdiff isSapic = -- trace ("closeRuleCache: " ++ show classifiedRules) $
     ClosedRuleCache
-        classifiedRules rawSources refinedSources injFactInstances
+        classifiedRules cachedRawSources cachedRefinedSources injFactInstances
   where
     ctxt0 = ProofContext
         sig classifiedRules injFactInstances RawSource [] AvoidInduction Nothing Nothing 
@@ -148,6 +151,25 @@ closeRuleCache parameters restrictions typAsms forcedInjFacts sig protoRules int
     -- inj fact instances
     injFactInstances = forcedInjFacts' `S.union`
         simpleInjectiveFactInstances reducibles (L.get cprRuleE <$> protoRules)
+
+    -- Cache source computation to disk. On a hit the lazy
+    -- (rawSources, refinedSources) pair is never evaluated.
+    (cachedRawSources, cachedRefinedSources) =
+      withCache cfg "sources" keyStr (rawSources, refinedSources)
+
+    -- CACHE KEY: Must include ALL inputs that affect rawSources/refinedSources.
+    -- The version directory already covers Tamarin version, git hash, and Maude
+    -- version. If you add a new parameter to closeRuleCache that influences
+    -- source computation, you MUST add it here — otherwise stale cached results
+    -- may be returned. (The git hash in the directory name provides a safety net
+    -- across commits, but not within the same commit during development.)
+    keyStr = show ( B.encode classifiedRules
+                  , B.encode parameters
+                  , B.encode restrictions
+                  , B.encode typAsms
+                  , B.encode injFactInstances
+                  , show (mhMaudeSig hnd)
+                  )
 
     -- precomputing the case distinctions: we make sure to only add safety
     -- restrictions. Otherwise, it wouldn't be sound to use the precomputed case

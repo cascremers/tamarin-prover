@@ -130,6 +130,7 @@ library
     Theory.Text.Parser.Token
     Theory.Text.Pretty
     Theory.Tools.AbstractInterpretation
+    Theory.Tools.Cache
     Theory.Tools.EquationStore
     Theory.Tools.InjectiveFactInstances
     Theory.Tools.IntruderRules

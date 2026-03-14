@@ -23,6 +23,7 @@ module Main.Console (
   , maudePath
   , ensureMaude
   , ensureMaudeAndGetVersion
+  , getVersionIO
   , testProcess
   , commandLine
 
@@ -51,6 +52,8 @@ module Main.Console (
   -- Version
   , gitVersion
   , compileTime
+  , tamarinGitHash
+  , tamarinVersionStr
   ) where
 
 import Data.Maybe
@@ -211,6 +214,14 @@ gitVersion = concat
 -- | Compile Time
 compileTime :: String
 compileTime = "Compiled at: " ++ $(stringE =<< runIO (show `fmap` Data.Time.getCurrentTime))
+
+-- | Raw git hash from the build
+tamarinGitHash :: String
+tamarinGitHash = $(gitHash)
+
+-- | Tamarin version string (e.g., "1.9.0")
+tamarinVersionStr :: String
+tamarinVersionStr = showVersion version
 
 -- | Program name
 programName :: String

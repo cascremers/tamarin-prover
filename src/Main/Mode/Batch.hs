@@ -32,6 +32,9 @@ import Main.Console
 import Main.Environment
 import Main.TheoryLoader
 import Main.Utils
+import Theory.Tools.Cache (CacheConfig(..), getCacheDir, clearCache, clearOldCaches)
+import System.Directory (doesDirectoryExist, removeDirectoryRecursive)
+import System.Environment (lookupEnv)
 import Data.Map qualified as M
 import Theory.Constraint.System.Dot
 import Text.Dot qualified as D
@@ -86,20 +89,31 @@ batchMode = tamarinMode
 -- | Process a theory file.
 run :: TamarinMode -> Arguments -> IO ()
 run thisMode as
+  | argExists "clearCache" as = do
+      dir <- getCacheDir
+      exists <- doesDirectoryExist dir
+      if exists
+        then do removeDirectoryRecursive dir
+                putStrLn $ "Cache cleared: " ++ dir
+        else putStrLn "No cache to clear."
+  | argExists "clearOldCache" as = do
+      (_, rawMaudeVersion) <- ensureMaude as
+      thyOpts' <- finalizeCacheConfig thyLoadOptions rawMaudeVersion
+      clearOldCaches thyOpts'.cacheConfig
   | null inFiles = helpAndExit thisMode (Just "no input files given")
   | argExists "parseOnly" as = do
-      res <- mapM (processThy "") inFiles
+      res <- mapM (processThy "" thyLoadOptions) inFiles
       let (docs, _) = unzip res
 
       mapM_ (putStrLn . renderDoc) docs
   | argExists "precomputeOnly" as = do
-      versionData <- ensureMaudeAndGetVersion as
-      res <- mapM (processThy versionData) inFiles
+      (versionData, thyOpts') <- ensureMaudeAndFinalize as
+      res <- mapM (processThy versionData thyOpts') inFiles
       let (docs, _) = unzip res
       mapM_ (putStrLn . renderDoc) docs
   | argExists "outModule" as = do
-      versionData <- ensureMaudeAndGetVersion as
-      res <- mapM (processThy versionData) inFiles
+      (versionData, thyOpts') <- ensureMaudeAndFinalize as
+      res <- mapM (processThy versionData thyOpts') inFiles
       let (docs, _) = unzip res
 
       if writeOutput then do
@@ -111,8 +125,8 @@ run thisMode as
       else do
         mapM_ (putStrLn . renderDoc) docs
   | otherwise = do
-      versionData <- ensureMaudeAndGetVersion as
-      resTimed <- mapM (timedIO . processThy versionData) inFiles
+      (versionData, thyOpts') <- ensureMaudeAndFinalize as
+      resTimed <- mapM (timedIO . processThy versionData thyOpts') inFiles
       let (docs, reps, times) = unzip3 $ fmap (\((d, r), t) -> (d, r, t)) resTimed
 
       if writeOutput then do
@@ -185,21 +199,43 @@ run thisMode as
     -- theory processing functions
     ------------------------------
 
-    processThy :: String -> FilePath -> IO (Pretty.Doc, Pretty.Doc)
-    processThy versionData inFile = either handleError pure <=< runExceptT $ do
+    -- | Ensure Maude is available and finalize CacheConfig with version info.
+    ensureMaudeAndFinalize :: Arguments -> IO (String, TheoryLoadOptions)
+    ensureMaudeAndFinalize args = do
+      (_, rawMaudeVersion) <- ensureMaude args
+      versionData <- getVersionIO rawMaudeVersion
+      thyOpts' <- finalizeCacheConfig thyLoadOptions rawMaudeVersion
+      pure (versionData, thyOpts')
+
+    -- | Fill in version information and check the TAMARIN_NO_CACHE env var.
+    finalizeCacheConfig :: TheoryLoadOptions -> String -> IO TheoryLoadOptions
+    finalizeCacheConfig opts rawMaudeVersion = do
+      envNoCache <- lookupEnv "TAMARIN_NO_CACHE"
+      let envDisabled = maybe False (not . null) envNoCache
+          baseCfg = opts.cacheConfig
+          finalCfg = baseCfg
+            { ccEnabled        = ccEnabled baseCfg && not envDisabled
+            , ccTamarinVersion = tamarinVersionStr
+            , ccMaudeVersion   = rawMaudeVersion
+            , ccGitHash        = tamarinGitHash
+            }
+      pure opts { cacheConfig = finalCfg }
+
+    processThy :: String -> TheoryLoadOptions -> FilePath -> IO (Pretty.Doc, Pretty.Doc)
+    processThy versionData thyOpts inFile = either handleError pure <=< runExceptT $ do
       srcThy <- liftIO $ readFile inFile
-      thy    <- loadTheory thyLoadOptions srcThy inFile
+      thy    <- loadTheory thyOpts srcThy inFile
 
       let sig = either (._thySignature) (._diffThySignature) thy
-      sig'   <- liftIO $ toSignatureWithMaude thyLoadOptions.maudePath sig
+      sig'   <- liftIO $ toSignatureWithMaude thyOpts.maudePath sig
 
       -- | Pretty print the theory as is without performing any checks.
-      if thyLoadOptions.parseOnlyMode then
+      if thyOpts.parseOnlyMode then
         pure $ (, Pretty.emptyDoc) $ either prettyOpenTheory prettyOpenDiffTheory thy
 
       -- | Execute precomputation steps and print the partial deconstructions
-      else if thyLoadOptions.precomputeOnlyMode then do
-        (report, thy') <- closeTheory versionData thyLoadOptions sig' thy
+      else if thyOpts.precomputeOnlyMode then do
+        (report, thy') <- closeTheory versionData thyOpts sig' thy
         case thy' of
           Left thy'' -> do
             pure (ppWf report Pretty.$--$ prettyPrecomputation thy'', ppWf report)
@@ -208,20 +244,20 @@ run thisMode as
     
       -- | Translate and check thoery based on specified output module.
       else if isTranslateOnlyMode then do
-        (report, thy') <- translateAndCheckTheory versionData thyLoadOptions sig' thy
+        (report, thy') <- translateAndCheckTheory versionData thyOpts sig' thy
 
         -- comment: Not sure why this was needed. It just duplicates all comments in the theory.
         -- let thy'' = bimap (modify thyItems (++ (TextItem <$> formalComments thy')))
         --                   (modify diffThyItems (++ (DiffTextItem <$> formalComments thy')))
         --                   thy'
 
-        (, ppWf report) <$> either (liftIO . prettyOpenTheoryByModule thyLoadOptions)
+        (, ppWf report) <$> either (liftIO . prettyOpenTheoryByModule thyOpts)
                                    (pure . prettyOpenDiffTheory)
                                    thy'
 
       -- | Close and potentially prove theory.
       else do
-        (report, thy') <- closeTheory versionData thyLoadOptions sig' thy
+        (report, thy') <- closeTheory versionData thyOpts sig' thy
         _ <- liftIO $ bitraverse outputTraces (const $ return ()) thy'
 
         pure $
@@ -229,7 +265,7 @@ run thisMode as
                  (\d -> (prettyClosedDiffTheory d, ppWf report Pretty.$--$ prettyClosedDiffSummary d))
                  thy'
       where
-        isTranslateOnlyMode = isJust thyLoadOptions.outputModule
+        isTranslateOnlyMode = isJust thyOpts.outputModule
 
         handleError e@(ParserError _) = die $ show e
         handleError (WarningError report) = do
@@ -243,7 +279,7 @@ run thisMode as
         ppWf []  = Pretty.emptyDoc
         ppWf rep = Pretty.vcat $
           Pretty.text ("WARNING: " ++ show (length rep) ++ " wellformedness check failed!")
-          : [ Pretty.text   "         The analysis results might be wrong!" | thyLoadOptions.proveMode ]
+          : [ Pretty.text   "         The analysis results might be wrong!" | thyOpts.proveMode ]
 
         -- | Output any found traces of the analyzed theory in dot/JSON format if the corresponing command line option is set.
         -- The output is dumped into a single file per format. Multiple dot graphs are simply concatenated into a single file,

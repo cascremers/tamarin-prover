@@ -264,3 +264,47 @@ loop-breakers over the rule set, and will not have their sources precomputed.
 For more on fact annotations, see 
 [Fact Annotations](011_advanced-features.html#sec:fact-annotations).
 
+Caching of precomputation results {#sec:caching}
+-----------
+
+By default, Tamarin caches the results of the precomputation phase on disk to avoid needlessly re-doing the precomputations.
+
+In particular, when a theory file is loaded, Tamarin computes a hash of the
+theory's precomputation input (rules, functions, equations, builtins, and
+options) together with the current Tamarin and Maude versions. If a cached
+result matching this hash already exists, Tamarin reuses it instead of repeating
+the precomputation. This can significantly speed up repeated runs on the same
+theory, but it also means that reported processing times may not reflect the
+actual precomputation cost.
+
+The cache is stored under `$XDG_CACHE_HOME/tamarin-prover/`. On most systems,
+this expands to `~/.cache/tamarin-prover/`. Within that directory, cached files
+are organized in subdirectories based on Tamarin version, Git revision, and
+Maude version, so the results from different builds do not interfere with each
+other.
+
+### What is cached and when is the cache invalidated?
+
+Tamarin caches the precomputed *sources* (both raw and refined) for an entire
+theory as a single unit. The cache is keyed on everything that influences
+source computation: rules, builtins, equations, restrictions, and
+precomputation parameters such as `--open-chains`.
+
+Changes to rules, builtins, restrictions, or function symbols invalidate the
+cache. Changes to lemmas, comments, or the theory name do not.
+
+### Command-line flags
+
+  - `--no-cache` disables disk caching entirely. Tamarin will neither read from nor write to the cache. This is useful for benchmarking, to ensure that the reported processing time always reflects a full precomputation.
+
+  - `--clear-cache` removes the entire cache directory and exits immediately.
+
+  - `--clear-cache-oldversions` removes cached data from all Tamarin/Maude version combinations other than the current one, and exits. This is useful for reclaiming disk space without invalidating the cache for the version you are currently using.
+
+### Environment variable
+
+Setting the environment variable `TAMARIN_NO_CACHE=1` has the same effect as
+passing `--no-cache`. This can be convenient in CI pipelines or benchmark
+scripts where you want to disable caching for all Tamarin invocations without
+modifying every command line.
+

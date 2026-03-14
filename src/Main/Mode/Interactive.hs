@@ -29,6 +29,7 @@ import Web.Types (OutputCommand(..), OutputFormat(..))
 import Main.Console
 import Main.Environment
 import Main.TheoryLoader
+import Theory.Tools.Cache (CacheConfig(..))
 
 
 ------------------------------------------------------------------------------
@@ -83,7 +84,20 @@ run thisMode as = case findArg "workDir" as of
           cacheDir = tempDir </> ("tamarin-prover-cache-" ++ loginName)
 
       -- Ensure Maude and get the Version in the arguments (__versionPrettyPrint__)
-      version <- ensureMaudeAndGetVersion as
+      (_, rawMaudeVersion) <- ensureMaude as
+      version <- getVersionIO rawMaudeVersion
+
+      -- Finalize cache configuration with version information
+      envNoCache <- lookupEnv "TAMARIN_NO_CACHE"
+      let envDisabled = maybe False (not . null) envNoCache
+          baseCfg = thyLoadOptions.cacheConfig
+          finalCfg = baseCfg
+            { ccEnabled        = ccEnabled baseCfg && not envDisabled
+            , ccTamarinVersion = tamarinVersionStr
+            , ccMaudeVersion   = rawMaudeVersion
+            , ccGitHash        = tamarinGitHash
+            }
+          thyOpts' = thyLoadOptions { cacheConfig = finalCfg }
 
       -- process theories
       _ <- case (readOutputCommand as).ocFormat of
@@ -109,13 +123,13 @@ run thisMode as = case findArg "workDir" as of
         (argExists "loadstate" as)
         (argExists "autosave" as)
 
-        thyLoadOptions
+        thyOpts'
 
-        (loadTheory thyLoadOptions)
-        (closeTheory version thyLoadOptions)
+        (loadTheory thyOpts')
+        (closeTheory version thyOpts')
 
         (argExists "debug" as) (readOutputCommand as) readImageFormat
-        (constructAutoProver thyLoadOptions)
+        (constructAutoProver thyOpts')
         (runWarp port)
 
     else

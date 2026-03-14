@@ -26,6 +26,7 @@ import           Theory.Proof
 import           Theory.Text.Pretty
 import           Theory.Tools.AbstractInterpretation
 import           Theory.Tools.LoopBreakers
+import           Theory.Tools.Cache (CacheConfig, defaultCacheConfig)
 import           Lemma
 import           ClosedTheory
 import           TheoryObject
@@ -45,7 +46,7 @@ closeTheory :: FilePath         -- ^ Path to the Maude executable.
             -> IO ClosedTheory
 closeTheory maudePath thy0 autosources = do
     sig <- toSignatureWithMaude maudePath $ L.get thySignature thy0
-    return $ closeTheoryWithMaude sig thy0 autosources True
+    return $ closeTheoryWithMaude defaultCacheConfig sig thy0 autosources True
 
 
 
@@ -61,12 +62,12 @@ closeDiffTheory :: FilePath         -- ^ Path to the Maude executable.
             -> IO ClosedDiffTheory
 closeDiffTheory maudePath thy0 autoSources = do
     sig <- toSignatureWithMaude maudePath $ L.get diffThySignature thy0
-    return $ closeDiffTheoryWithMaude sig thy0 autoSources
+    return $ closeDiffTheoryWithMaude defaultCacheConfig sig thy0 autoSources
 
 -- | Close a diff theory given a maude signature. This signature must be valid for
 -- the given theory.
-closeDiffTheoryWithMaude :: SignatureWithMaude -> OpenDiffTheory -> Bool -> ClosedDiffTheory
-closeDiffTheoryWithMaude sig thy0 autoSources =
+closeDiffTheoryWithMaude :: CacheConfig -> SignatureWithMaude -> OpenDiffTheory -> Bool -> ClosedDiffTheory
+closeDiffTheoryWithMaude cfg sig thy0 autoSources =
   if autoSources && (containsPartialDeconstructions (cacheLeft items) || containsPartialDeconstructions (cacheRight items))
     then
       proveDiffTheory (const True) checkProof checkDiffProof
@@ -79,10 +80,10 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
     parameters = Sources.IntegerParameters (L.get (openChainsLimit . diffThyOptions) thy0) (L.get (saturationLimit . diffThyOptions) thy0) True
     h              = L.get diffThyHeuristic thy0
     t              = L.get diffThyTactic thy0
-    diffCacheLeft  its = closeRuleCache parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its)  (L.get diffThyDiffCacheLeft  thy0) (L.get (verboseOption . diffThyOptions) thy0) True (L.get diffThyIsSapic thy0)
-    diffCacheRight its = closeRuleCache parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) (L.get diffThyDiffCacheRight thy0) (L.get (verboseOption . diffThyOptions) thy0) True (L.get diffThyIsSapic thy0)
-    cacheLeft  its = closeRuleCache parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its)  (L.get diffThyCacheLeft  thy0) (L.get (verboseOption . diffThyOptions) thy0) False (L.get diffThyIsSapic thy0)
-    cacheRight its = closeRuleCache parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) (L.get diffThyCacheRight thy0) (L.get (verboseOption . diffThyOptions) thy0) False (L.get diffThyIsSapic thy0)
+    diffCacheLeft  its = closeRuleCache cfg parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its)  (L.get diffThyDiffCacheLeft  thy0) (L.get (verboseOption . diffThyOptions) thy0) True (L.get diffThyIsSapic thy0)
+    diffCacheRight its = closeRuleCache cfg parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) (L.get diffThyDiffCacheRight thy0) (L.get (verboseOption . diffThyOptions) thy0) True (L.get diffThyIsSapic thy0)
+    cacheLeft  its = closeRuleCache cfg parameters restrictionsLeft  (typAsms its) S.empty sig (leftClosedRules its)  (L.get diffThyCacheLeft  thy0) (L.get (verboseOption . diffThyOptions) thy0) False (L.get diffThyIsSapic thy0)
+    cacheRight its = closeRuleCache cfg parameters restrictionsRight (typAsms its) S.empty sig (rightClosedRules its) (L.get diffThyCacheRight thy0) (L.get (verboseOption . diffThyOptions) thy0) False (L.get diffThyIsSapic thy0)
 
     checkProof = checkAndExtendProver (sorryProver Nothing)
     checkDiffProof = checkAndExtendDiffProver (sorryDiffProver Nothing)
@@ -167,8 +168,8 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
 
 -- | Close a theory given a maude signature. This signature must be valid for
 -- the given theory.
-closeTheoryWithMaude :: SignatureWithMaude -> OpenTranslatedTheory -> Bool -> Bool -> ClosedTheory
-closeTheoryWithMaude sig thy0 autoSources showSaturation =
+closeTheoryWithMaude :: CacheConfig -> SignatureWithMaude -> OpenTranslatedTheory -> Bool -> Bool -> ClosedTheory
+closeTheoryWithMaude cfg sig thy0 autoSources showSaturation =
   if autoSources && containsPartialDeconstructions (cache items)
     then
         proveTheory (const True) checkProof
@@ -181,7 +182,7 @@ closeTheoryWithMaude sig thy0 autoSources showSaturation =
     h          = L.get thyHeuristic thy0
     t          = L.get thyTactic thy0
     forcedInjFacts = L.get forcedInjectiveFacts $ L.get thyOptions thy0
-    cache its = closeRuleCache parameters restrictions (typAsms its) forcedInjFacts sig (rules its) (L.get thyCache thy0) (L.get (verboseOption . thyOptions) thy0) False (L.get thyIsSapic thy0)
+    cache its = closeRuleCache cfg parameters restrictions (typAsms its) forcedInjFacts sig (rules its) (L.get thyCache thy0) (L.get (verboseOption . thyOptions) thy0) False (L.get thyIsSapic thy0)
     checkProof = checkAndExtendProver (sorryProver Nothing)
 
     -- Maude / Signature handle
@@ -370,9 +371,9 @@ mkDiffSystem _ _ _ = emptyDiffSystem
 -----------------------------------------------
 
 -- | Apply partial evaluation.
-applyPartialEvaluation :: EvaluationStyle -> Bool -> ClosedTheory -> ClosedTheory
-applyPartialEvaluation evalStyle autosources thy0 =
-    closeTheoryWithMaude sig
+applyPartialEvaluation :: CacheConfig -> EvaluationStyle -> Bool -> ClosedTheory -> ClosedTheory
+applyPartialEvaluation cfg evalStyle autosources thy0 =
+    closeTheoryWithMaude cfg sig
       (removeTranslationItems (L.modify thyItems replaceProtoRules (openTheory thy0)))
       autosources True
   where
@@ -399,9 +400,9 @@ applyPartialEvaluation evalStyle autosources thy0 =
               ++ show (length ruEs) ++ ".\n\n")
 
 -- | Apply partial evaluation.
-applyPartialEvaluationDiff :: EvaluationStyle -> Bool -> ClosedDiffTheory -> ClosedDiffTheory
-applyPartialEvaluationDiff evalStyle autoSources thy0 =
-    closeDiffTheoryWithMaude sig
+applyPartialEvaluationDiff :: CacheConfig -> EvaluationStyle -> Bool -> ClosedDiffTheory -> ClosedDiffTheory
+applyPartialEvaluationDiff cfg evalStyle autoSources thy0 =
+    closeDiffTheoryWithMaude cfg sig
       (L.modify diffThyItems replaceProtoRules (openDiffTheory thy0)) autoSources
   where
     sig            = L.get diffThySignature thy0
