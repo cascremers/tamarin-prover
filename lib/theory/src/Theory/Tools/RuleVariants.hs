@@ -32,21 +32,9 @@ import qualified Data.Map                         as M
 import qualified Data.Set                         as S
 -- import           Data.Traversable                 (traverse)
 
--- import           Utils.Misc (stringSHA256)
-
--- import           System.IO.Unsafe
--- import           System.IO
--- import           System.Directory
--- import qualified Data.Binary as B
--- import qualified Data.ByteString.Lazy as BS
-
 import           Debug.Trace.Ignore
 import Data.Maybe (isJust)
 import Term.Positions (findPos)
-
-
-tmpdir :: FilePath
-tmpdir = "/tmp/tamarin/"
 
 
 -- Variants of protocol rules
@@ -135,16 +123,3 @@ variantsProtoRule hnd ru@(Rule (ProtoRuleEInfo na attr _) prems0 concs0 acts0 nv
 
 computeVariantsCached :: LNTerm -> MaudeHandle -> [LNSubstVFresh]
 computeVariantsCached inp hnd = computeVariants inp `runReader` hnd
-{-
-  unsafePerformIO $ do
-    createDirectoryIfMissing True tmpdir
-    let hashInput = tmpdir ++ stringSHA256 (show inp)
-    fEx <- doesFileExist hashInput
-    if fEx
-      then B.decodeFile hashInput
-      else do let result = computeVariants inp `runReader` hnd
-              (tmpFile,tmpHnd) <- openBinaryTempFile tmpdir "variants.tmp"
-              BS.hPut tmpHnd $ B.encode result
-              renameFile tmpFile hashInput
-              return result
--}
