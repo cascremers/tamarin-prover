@@ -81,7 +81,7 @@ proofMethod = asum
   , symbol "contradiction" *> pure (Finished (Contradictory Nothing))
   , symbol "induction"     *> pure Induction
   , symbol "INVALIDATED"   *> pure Invalidated 
-  , symbol "UNFINISHABLE"  *> pure (Finished Unfinishable)
+  , symbol "UNFINISHABLE"  *> pure (Finished (Unfinishable []))
   ]
 
 -- | Start parsing a proof skeleton.

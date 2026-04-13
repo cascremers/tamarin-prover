@@ -205,9 +205,10 @@ data Result =
   | Contradictory (Maybe Contradiction)
   -- ^ A contradiction could be derived, possibly with a reason. The single
   --    formula constraint in the system.
-  | Unfinishable
+  | Unfinishable [Maybe Goal]
   -- ^ The proof cannot be finished (due to reducible operators in subterms or
-  --   because a solution was found after weakening).
+  --   because a solution was found after weakening). The list carries the
+  --   goals to skip on the next restart (used by the CollectAndRestart strategy).
   deriving( Eq, Ord, Show, Generic, NFData, Binary )
 
 -- | Sound transformations of sequents.
@@ -296,8 +297,8 @@ checkAndExecProofMethod ctxt method sys = do
 
     equalReason :: Result -> Result -> Bool
     equalReason (Contradictory _) (Contradictory _) = True
+    equalReason (Unfinishable _) (Unfinishable _)   = True
     equalReason r1 r2 = r1 == r2
-    -- ^ all other reasons don't have an argument
 
 -- @execMethod rules method se@ applies the @method@ to the sequent under the
 -- assumption that it is sound to apply the method and that the @rules@ describe
@@ -554,7 +555,7 @@ isFinished ctxt sys
   | isInitialSystem sys = Nothing
   | not $ null cs = Just $ Contradictory (Just $ head cs)
   | null ogs && stFinished = Just Solved
-  | null ogs && not stFinished = Just Unfinishable
+  | null ogs && not stFinished = Just (Unfinishable [])
   | otherwise = Nothing
   where
     cs = contradictions ctxt sys
@@ -1232,7 +1233,7 @@ prettyProofMethod method = case method of
     Invalidated -> lineComment_ "proof may have been invalidated by editing a reuse lemma above. You should "
     Finished Solved -> keyword_ "SOLVED" <-> lineComment_ "trace found"
     Induction  -> keyword_ "induction"
-    Finished Unfinishable -> keyword_ "UNFINISHABLE" <-> lineComment_ "reducible operator in subterm"
+    Finished (Unfinishable _) -> keyword_ "UNFINISHABLE" <-> lineComment_ "reducible operator in subterm"
     Sorry reason ->
         fsep [keyword_ "sorry", maybe emptyDoc closedComment_ reason]
     SolveGoal goal -> keyword_ "solve(" <-> prettyGoal goal <-> keyword_ ")"
